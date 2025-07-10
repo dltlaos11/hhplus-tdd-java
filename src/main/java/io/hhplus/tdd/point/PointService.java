@@ -2,17 +2,38 @@ package io.hhplus.tdd.point;
 
 import io.hhplus.tdd.database.UserPointTable;
 import io.hhplus.tdd.database.PointHistoryTable;
+import io.hhplus.tdd.point.policy.ChargePolicy;
 import org.springframework.stereotype.Service;
 
+/**
+ * 포인트 관련 비즈니스 로직을 담당하는 서비스 클래스
+ * 
+ * 설계 원칙:
+ * 1. 단일 책임 원칙: 포인트 관련 비즈니스 로직만 담당
+ * 2. 의존성 주입: 생성자 주입으로 테스트 용이성 확보
+ * 3. 정책 분리: 비즈니스 규칙을 별도 Policy 클래스로 위임
+ * 4. 트랜잭션 관점: 포인트 변경과 히스토리 기록을 원자적으로 처리
+ */
 @Service
 public class PointService {
 
     private final UserPointTable userPointTable;
     private final PointHistoryTable pointHistoryTable;
+    private final ChargePolicy chargePolicy;
 
-    public PointService(UserPointTable userPointTable, PointHistoryTable pointHistoryTable) {
+    /**
+     * Spring 의존성 주입을 위한 생성자
+     * 
+     * @param userPointTable 사용자 포인트 데이터 접근 객체
+     * @param pointHistoryTable 포인트 히스토리 데이터 접근 객체  
+     * @param chargePolicy 충전 정책 검증 객체
+     */
+    public PointService(UserPointTable userPointTable, 
+                       PointHistoryTable pointHistoryTable,
+                       ChargePolicy chargePolicy) {
         this.userPointTable = userPointTable;
         this.pointHistoryTable = pointHistoryTable;
+        this.chargePolicy = chargePolicy;
     }
 
     /**
@@ -23,5 +44,37 @@ public class PointService {
      */
     public UserPoint getPoint(long userId) {
         return userPointTable.selectById(userId);
+    }
+
+    /**
+     * 사용자의 포인트를 충전합니다.
+     * 
+     * 처리 과정:
+     * 1. 현재 포인트 조회
+     * 2. 충전 정책 검증 (금액 유효성, 최대 한도 등)
+     * 3. 포인트 업데이트
+     * 4. 충전 히스토리 기록
+     * 
+     * @param userId 사용자 ID
+     * @param amount 충전할 금액
+     * @return 충전 후 사용자 포인트 정보
+     * @throws io.hhplus.tdd.point.exception.InvalidAmountException 유효하지 않은 충전 금액
+     * @throws io.hhplus.tdd.point.exception.ExceedsMaxPointException 최대 포인트 초과
+     */
+    public UserPoint charge(long userId, long amount) {
+        // 1. 현재 포인트 조회
+        UserPoint currentUserPoint = userPointTable.selectById(userId);
+        
+        // 2. 충전 정책 검증
+        chargePolicy.validate(amount, currentUserPoint.point());
+        
+        // 3. 새로운 포인트 계산 및 업데이트
+        long newPoint = currentUserPoint.point() + amount;
+        UserPoint updatedUserPoint = userPointTable.insertOrUpdate(userId, newPoint);
+        
+        // 4. 충전 히스토리 기록
+        pointHistoryTable.insert(userId, amount, TransactionType.CHARGE, System.currentTimeMillis());
+        
+        return updatedUserPoint;
     }
 }

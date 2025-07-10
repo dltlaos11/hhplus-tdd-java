@@ -123,8 +123,8 @@ class ChargePolicyTest {
     @DisplayName("이미 최대 포인트 보유 시 추가 충전이 불가능하다")
     void 최대_포인트_보유시_충전_불가() {
         // given
-        long anyAmount = 100L;
-        long maxPoint = 1000000L;
+        long anyAmount = 100L; // 최소 금액 조건 만족
+        long maxPoint = 1000000L; // 이미 최대 포인트
 
         // when & then
         assertThatThrownBy(() -> chargePolicy.validate(anyAmount, maxPoint))
@@ -161,9 +161,9 @@ class ChargePolicyTest {
     @Test
     @DisplayName("최대 포인트 경계값 테스트 - 한도 초과는 실패")
     void 최대_포인트_경계값_실패() {
-        // given
-        long chargeAmount = 1L;
-        long currentPoint = 1000000L; // 이미 최대
+        // given - 최소 금액 조건도 만족시키면서 최대 포인트 초과하도록 수정
+        long chargeAmount = 100L; // 최소 충전 금액 이상
+        long currentPoint = 999999L; // 충전 후 1,000,099원이 되어 100만원 초과
 
         // when & then
         assertThatThrownBy(() -> chargePolicy.validate(chargeAmount, currentPoint))
@@ -180,5 +180,32 @@ class ChargePolicyTest {
         // when & then
         assertThatNoException()
                 .isThrownBy(() -> chargePolicy.validate(chargeAmount, currentPoint));
+    }
+
+    // =============== 추가 경계값 테스트 ===============
+
+    @Test
+    @DisplayName("정확히 최대 한도에 도달하는 충전은 성공한다")
+    void 정확히_최대_한도_도달_성공() {
+        // given
+        long chargeAmount = 500L; // 최소 금액 이상
+        long currentPoint = 999500L; // 충전 후 정확히 1,000,000원
+
+        // when & then
+        assertThatNoException()
+                .isThrownBy(() -> chargePolicy.validate(chargeAmount, currentPoint));
+    }
+
+    @Test
+    @DisplayName("최대 한도를 1원이라도 초과하면 실패한다")
+    void 최대_한도_1원_초과_실패() {
+        // given
+        long chargeAmount = 501L; // 최소 금액 이상
+        long currentPoint = 999500L; // 충전 후 1,000,001원 (1원 초과)
+
+        // when & then
+        assertThatThrownBy(() -> chargePolicy.validate(chargeAmount, currentPoint))
+                .isInstanceOf(ExceedsMaxPointException.class)
+                .hasMessage("최대 보유 가능 포인트는 1,000,000원입니다");
     }
 }

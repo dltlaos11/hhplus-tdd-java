@@ -2,6 +2,7 @@ package io.hhplus.tdd.point.policy;
 
 import io.hhplus.tdd.point.exception.InvalidAmountException;
 import io.hhplus.tdd.point.exception.ExceedsMaxPointException;
+import org.springframework.stereotype.Component;
 
 /**
  * 포인트 충전 정책 클래스
@@ -11,7 +12,13 @@ import io.hhplus.tdd.point.exception.ExceedsMaxPointException;
  * 2. 정책 변경 시 이 클래스만 수정하면 됨 (OCP 원칙)
  * 3. 테스트 가능성 - 정책 로직을 독립적으로 테스트 가능
  * 4. 재사용성 - 다른 컨텍스트에서도 동일한 정책 적용 가능
+ * 
+ * Spring 관리 이유:
+ * - @Component로 Spring 컨테이너가 관리하여 의존성 주입 가능
+ * - Singleton으로 관리되어 메모리 효율적
+ * - 향후 설정값 주입이나 다른 Bean과의 연동 시 확장 용이
  */
+@Component
 public class ChargePolicy {
     
     /**
@@ -57,17 +64,18 @@ public class ChargePolicy {
     /**
      * 충전 후 총 포인트가 최대 한도를 초과하지 않는지 검증합니다.
      * 
-     * 오버플로우 안전성:
-     * - long 타입의 최대값(9경)보다 포인트 한도(100만원)가 훨씬 작으므로 안전
-     * - 하지만 명시적으로 검증하여 안정성 확보
+     * 검증 규칙:
+     * - 충전 후 총 포인트 <= 최대 포인트
      * 
      * @param amount 충전 금액
      * @param currentPoint 현재 포인트
      * @throws ExceedsMaxPointException 최대 포인트를 초과하는 경우
      */
     private void validateMaxPointLimit(long amount, long currentPoint) {
-        // 오버플로우 체크 (방어적 프로그래밍)
-        if (currentPoint > MAX_TOTAL_POINT - amount) {
+        // 더 직관적인 로직: 충전 후 총액이 한도를 초과하는지 직접 확인
+        long totalAfterCharge = currentPoint + amount;
+        
+        if (totalAfterCharge > MAX_TOTAL_POINT) {
             throw new ExceedsMaxPointException("최대 보유 가능 포인트는 " + 
                 String.format("%,d", MAX_TOTAL_POINT) + "원입니다");
         }
