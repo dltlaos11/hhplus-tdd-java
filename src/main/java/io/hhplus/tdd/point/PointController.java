@@ -49,10 +49,15 @@ public class PointController {
     }
 
     /**
-     * TODO - 특정 유저의 포인트를 사용하는 기능을 작성해주세요.
+     * 특정 유저의 포인트를 사용하는 기능입니다.
+     * 
+     * @param id 사용자 ID
+     * @param amount 사용할 금액 (RequestBody로 전달)
+     * @return 사용 후 사용자 포인트 정보
      */
     @PatchMapping("{id}/use")
     public UserPoint use(@PathVariable long id, @RequestBody long amount) {
-        return new UserPoint(0, 0, 0);
+        log.info("포인트 사용 요청: userId={}, amount={}", id, amount);
+        return pointService.use(id, amount);
     }
 }

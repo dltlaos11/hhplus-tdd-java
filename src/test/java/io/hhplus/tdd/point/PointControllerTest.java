@@ -2,6 +2,7 @@ package io.hhplus.tdd.point;
 
 import io.hhplus.tdd.point.exception.InvalidAmountException;
 import io.hhplus.tdd.point.exception.ExceedsMaxPointException;
+import io.hhplus.tdd.point.exception.InsufficientPointException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -52,6 +53,79 @@ class PointControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(userId))
                 .andExpect(jsonPath("$.point").value(5000));
+    }
+    // =============== 새로운 사용 API 테스트 ===============
+
+    @Test
+    @DisplayName("PATCH /point/{id}/use 요청으로 포인트를 사용할 수 있다")
+    void 포인트_사용_API_성공_테스트() throws Exception {
+        // given
+        long userId = 1L;
+        long useAmount = 1000L;
+        UserPoint usedPoint = new UserPoint(userId, 4000L, System.currentTimeMillis());
+        
+        given(pointService.use(userId, useAmount)).willReturn(usedPoint);
+
+        // when & then
+        mockMvc.perform(patch("/point/{id}/use", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.valueOf(useAmount)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId))
+                .andExpect(jsonPath("$.point").value(4000));
+    }
+
+    @Test
+    @DisplayName("유효하지 않은 사용 금액으로 요청 시 400 에러를 반환한다")
+    void 유효하지_않은_사용_금액_API_실패_테스트() throws Exception {
+        // given
+        long userId = 1L;
+        long invalidAmount = 0L;
+        
+        willThrow(new InvalidAmountException("사용 금액은 0보다 커야 합니다"))
+                .given(pointService).use(userId, invalidAmount);
+
+        // when & then
+        mockMvc.perform(patch("/point/{id}/use", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.valueOf(invalidAmount)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("포인트 부족 시 400 에러를 반환한다")
+    void 포인트_부족_사용_API_실패_테스트() throws Exception {
+        // given
+        long userId = 1L;
+        long excessiveAmount = 6000L;
+        
+        willThrow(new InsufficientPointException(excessiveAmount, 5000L))
+                .given(pointService).use(userId, excessiveAmount);
+
+        // when & then
+        mockMvc.perform(patch("/point/{id}/use", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.valueOf(excessiveAmount)))
+                .andExpect(status().isBadRequest());
+    }
+
+    @Test
+    @DisplayName("전체 포인트 사용 시 0원이 된다")
+    void 전체_포인트_사용_API_성공_테스트() throws Exception {
+        // given
+        long userId = 2L;
+        long useAmount = 5000L;
+        UserPoint emptyPoint = new UserPoint(userId, 0L, System.currentTimeMillis());
+        
+        given(pointService.use(userId, useAmount)).willReturn(emptyPoint);
+
+        // when & then
+        mockMvc.perform(patch("/point/{id}/use", userId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(String.valueOf(useAmount)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(userId))
+                .andExpect(jsonPath("$.point").value(0));
     }
 
     @Test

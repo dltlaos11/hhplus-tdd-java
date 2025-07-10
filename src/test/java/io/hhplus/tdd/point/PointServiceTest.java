@@ -3,7 +3,9 @@ package io.hhplus.tdd.point;
 import io.hhplus.tdd.database.UserPointTable;
 import io.hhplus.tdd.database.PointHistoryTable;
 import io.hhplus.tdd.point.policy.ChargePolicy;
+import io.hhplus.tdd.point.policy.UsePolicy;
 import io.hhplus.tdd.point.exception.InvalidAmountException;
+import io.hhplus.tdd.point.exception.InsufficientPointException;
 import io.hhplus.tdd.point.exception.ExceedsMaxPointException;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -27,10 +29,10 @@ import static org.mockito.ArgumentMatchers.anyLong;
  * 
  * Mock 전략:
  * - Database 계층 (UserPointTable, PointHistoryTable): @Mock 사용 (런던파)
- * - 도메인 로직 (ChargePolicy): @Spy 사용 (실제 동작 + 호출 검증)
+ * - 도메인 로직 (ChargePolicy, UsePolicy): @Spy 사용 (실제 동작 + 호출 검증)
  * 
  * @Spy 사용 이유:
- * - ChargePolicy의 실제 비즈니스 로직 검증 필요
+ * - ChargePolicy, UsePolicy의 실제 비즈니스 로직 검증 필요
  * - 동시에 메서드 호출 여부도 검증하고 싶음
  * - 실제 정책 동작을 통한 통합적 테스트 가능
  */
@@ -45,6 +47,9 @@ class PointServiceTest {
 
     @Spy
     private ChargePolicy chargePolicy;
+
+    @Spy
+    private UsePolicy usePolicy;
 
     @InjectMocks
     private PointService pointService;
@@ -207,5 +212,126 @@ class PointServiceTest {
         then(chargePolicy).should(times(1)).validate(chargeAmount, currentPoint);
         then(userPointTable).should(never()).insertOrUpdate(anyLong(), anyLong());
         then(pointHistoryTable).should(never()).insert(anyLong(), anyLong(), eq(TransactionType.CHARGE), anyLong());
+    }
+
+    // =============== 새로운 사용 기능 테스트 ===============
+
+    @Test
+    @DisplayName("유효한 금액으로 포인트를 사용할 수 있다")
+    void 포인트_사용_성공() {
+        // given
+        long userId = 1L;
+        long useAmount = 1000L;
+        long currentPoint = 5000L;
+        long expectedNewPoint = currentPoint - useAmount;
+        
+        UserPoint currentUserPoint = new UserPoint(userId, currentPoint, System.currentTimeMillis());
+        UserPoint updatedUserPoint = new UserPoint(userId, expectedNewPoint, System.currentTimeMillis());
+        PointHistory expectedHistory = new PointHistory(2L, userId, useAmount, TransactionType.USE, System.currentTimeMillis());
+
+        given(userPointTable.selectById(userId)).willReturn(currentUserPoint);
+        given(userPointTable.insertOrUpdate(userId, expectedNewPoint)).willReturn(updatedUserPoint);
+        given(pointHistoryTable.insert(eq(userId), eq(useAmount), eq(TransactionType.USE), anyLong()))
+                .willReturn(expectedHistory);
+
+        // when
+        UserPoint result = pointService.use(userId, useAmount);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result.id()).isEqualTo(userId);
+        assertThat(result.point()).isEqualTo(expectedNewPoint);
+        
+        // UsePolicy 호출 검증
+        then(usePolicy).should(times(1)).validate(useAmount, currentPoint);
+        
+        // 데이터 저장 검증
+        then(userPointTable).should(times(1)).insertOrUpdate(userId, expectedNewPoint);
+        then(pointHistoryTable).should(times(1)).insert(eq(userId), eq(useAmount), eq(TransactionType.USE), anyLong());
+    }
+
+    @Test
+    @DisplayName("전체 포인트를 모두 사용할 수 있다")
+    void 전체_포인트_사용_성공() {
+        // given
+        long userId = 2L;
+        long useAmount = 3000L;
+        long currentPoint = 3000L;
+        long expectedNewPoint = 0L;
+        
+        UserPoint currentUserPoint = new UserPoint(userId, currentPoint, System.currentTimeMillis());
+        UserPoint updatedUserPoint = new UserPoint(userId, expectedNewPoint, System.currentTimeMillis());
+
+        given(userPointTable.selectById(userId)).willReturn(currentUserPoint);
+        given(userPointTable.insertOrUpdate(userId, expectedNewPoint)).willReturn(updatedUserPoint);
+        given(pointHistoryTable.insert(eq(userId), eq(useAmount), eq(TransactionType.USE), anyLong()))
+                .willReturn(new PointHistory(3L, userId, useAmount, TransactionType.USE, System.currentTimeMillis()));
+
+        // when
+        UserPoint result = pointService.use(userId, useAmount);
+
+        // then
+        assertThat(result.id()).isEqualTo(userId);
+        assertThat(result.point()).isEqualTo(0L);
+        then(usePolicy).should(times(1)).validate(useAmount, currentPoint);
+    }
+
+    @Test
+    @DisplayName("포인트 부족 시 InsufficientPointException이 발생한다")
+    void 포인트_부족_시_사용_예외_발생() {
+        // given
+        long userId = 1L;
+        long useAmount = 6000L;
+        long currentPoint = 5000L;
+        
+        UserPoint currentUserPoint = new UserPoint(userId, currentPoint, System.currentTimeMillis());
+        given(userPointTable.selectById(userId)).willReturn(currentUserPoint);
+
+        // when & then
+        assertThatThrownBy(() -> pointService.use(userId, useAmount))
+                .isInstanceOf(InsufficientPointException.class)
+                .hasMessage("포인트가 부족합니다. 요청: 6000, 현재: 5000");
+                
+        // UsePolicy 호출은 되었지만 예외로 인해 데이터 저장은 되지 않음
+        then(usePolicy).should(times(1)).validate(useAmount, currentPoint);
+        then(userPointTable).should(never()).insertOrUpdate(anyLong(), anyLong());
+        then(pointHistoryTable).should(never()).insert(anyLong(), anyLong(), eq(TransactionType.USE), anyLong());
+    }
+
+    @Test
+    @DisplayName("유효하지 않은 사용 금액으로 사용 시 InvalidAmountException이 발생한다")
+    void 유효하지_않은_사용_금액_시_예외_발생() {
+        // given
+        long userId = 1L;
+        long invalidAmount = 0L;
+        UserPoint currentUserPoint = new UserPoint(userId, 5000L, System.currentTimeMillis());
+        
+        given(userPointTable.selectById(userId)).willReturn(currentUserPoint);
+
+        // when & then
+        assertThatThrownBy(() -> pointService.use(userId, invalidAmount))
+                .isInstanceOf(InvalidAmountException.class)
+                .hasMessage("사용 금액은 0보다 커야 합니다");
+                
+        // UsePolicy 호출 검증
+        then(usePolicy).should(times(1)).validate(invalidAmount, 5000L);
+    }
+
+    @Test
+    @DisplayName("최소 사용 금액 미만으로 사용 시 InvalidAmountException이 발생한다")
+    void 최소_사용_금액_미만_시_예외_발생() {
+        // given
+        long userId = 1L;
+        long invalidAmount = 99L;
+        UserPoint currentUserPoint = new UserPoint(userId, 5000L, System.currentTimeMillis());
+        
+        given(userPointTable.selectById(userId)).willReturn(currentUserPoint);
+
+        // when & then
+        assertThatThrownBy(() -> pointService.use(userId, invalidAmount))
+                .isInstanceOf(InvalidAmountException.class)
+                .hasMessage("최소 사용 금액은 100원입니다");
+                
+        then(usePolicy).should(times(1)).validate(invalidAmount, 5000L);
     }
 }
