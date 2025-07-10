@@ -23,6 +23,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.anyLong;
+import java.util.List;
 
 /**
  * PointService TDD 테스트
@@ -315,6 +316,108 @@ class PointServiceTest {
                 
         // UsePolicy 호출 검증
         then(usePolicy).should(times(1)).validate(invalidAmount, 5000L);
+    }
+
+    // =============== 새로운 내역 조회 기능 테스트 ===============
+
+    @Test
+    @DisplayName("사용자의 포인트 사용 내역을 조회할 수 있다")
+    void 포인트_내역_조회_성공() {
+        // given
+        long userId = 1L;
+        PointHistory history1 = new PointHistory(1L, userId, 1000L, TransactionType.CHARGE, System.currentTimeMillis());
+        PointHistory history2 = new PointHistory(2L, userId, 500L, TransactionType.USE, System.currentTimeMillis());
+        PointHistory history3 = new PointHistory(3L, userId, 2000L, TransactionType.CHARGE, System.currentTimeMillis());
+        
+        List<PointHistory> expectedHistories = List.of(history1, history2, history3);
+        given(pointHistoryTable.selectAllByUserId(userId)).willReturn(expectedHistories);
+
+        // when
+        List<PointHistory> result = pointService.getHistory(userId);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result).hasSize(3);
+        assertThat(result.get(0).userId()).isEqualTo(userId);
+        assertThat(result.get(0).type()).isEqualTo(TransactionType.CHARGE);
+        assertThat(result.get(0).amount()).isEqualTo(1000L);
+        assertThat(result.get(1).type()).isEqualTo(TransactionType.USE);
+        assertThat(result.get(1).amount()).isEqualTo(500L);
+        assertThat(result.get(2).type()).isEqualTo(TransactionType.CHARGE);
+        assertThat(result.get(2).amount()).isEqualTo(2000L);
+        
+        // 데이터 조회 검증
+        then(pointHistoryTable).should(times(1)).selectAllByUserId(userId);
+    }
+
+    @Test
+    @DisplayName("포인트 내역이 없는 사용자의 경우 빈 리스트를 반환한다")
+    void 포인트_내역_없는_사용자_조회() {
+        // given
+        long userId = 999L;
+        List<PointHistory> emptyHistories = List.of();
+        given(pointHistoryTable.selectAllByUserId(userId)).willReturn(emptyHistories);
+
+        // when
+        List<PointHistory> result = pointService.getHistory(userId);
+
+        // then
+        assertThat(result).isNotNull();
+        assertThat(result).isEmpty();
+        then(pointHistoryTable).should(times(1)).selectAllByUserId(userId);
+    }
+
+    @Test
+    @DisplayName("단일 충전 내역만 있는 사용자의 내역을 조회할 수 있다")
+    void 단일_충전_내역_조회() {
+        // given
+        long userId = 2L;
+        PointHistory singleHistory = new PointHistory(1L, userId, 5000L, TransactionType.CHARGE, System.currentTimeMillis());
+        List<PointHistory> singleHistoryList = List.of(singleHistory);
+        given(pointHistoryTable.selectAllByUserId(userId)).willReturn(singleHistoryList);
+
+        // when
+        List<PointHistory> result = pointService.getHistory(userId);
+
+        // then
+        assertThat(result).hasSize(1);
+        assertThat(result.get(0).userId()).isEqualTo(userId);
+        assertThat(result.get(0).amount()).isEqualTo(5000L);
+        assertThat(result.get(0).type()).isEqualTo(TransactionType.CHARGE);
+    }
+
+    @Test
+    @DisplayName("충전과 사용이 섞인 내역을 조회할 수 있다")
+    void 혼합_내역_조회() {
+        // given
+        long userId = 3L;
+        PointHistory chargeHistory = new PointHistory(1L, userId, 10000L, TransactionType.CHARGE, System.currentTimeMillis() - 1000);
+        PointHistory useHistory1 = new PointHistory(2L, userId, 3000L, TransactionType.USE, System.currentTimeMillis() - 500);
+        PointHistory useHistory2 = new PointHistory(3L, userId, 2000L, TransactionType.USE, System.currentTimeMillis());
+        
+        List<PointHistory> mixedHistories = List.of(chargeHistory, useHistory1, useHistory2);
+        given(pointHistoryTable.selectAllByUserId(userId)).willReturn(mixedHistories);
+
+        // when
+        List<PointHistory> result = pointService.getHistory(userId);
+
+        // then
+        assertThat(result).hasSize(3);
+        
+        // 충전 내역 검증
+        PointHistory chargeResult = result.stream()
+                .filter(h -> h.type() == TransactionType.CHARGE)
+                .findFirst()
+                .orElseThrow();
+        assertThat(chargeResult.amount()).isEqualTo(10000L);
+        
+        // 사용 내역 검증
+        List<PointHistory> useResults = result.stream()
+                .filter(h -> h.type() == TransactionType.USE)
+                .toList();
+        assertThat(useResults).hasSize(2);
+        assertThat(useResults.get(0).amount()).isEqualTo(3000L);
+        assertThat(useResults.get(1).amount()).isEqualTo(2000L);
     }
 
     @Test

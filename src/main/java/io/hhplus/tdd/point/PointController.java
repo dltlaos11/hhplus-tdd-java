@@ -28,11 +28,15 @@ public class PointController {
     }
 
     /**
-     * TODO - 특정 유저의 포인트 충전/이용 내역을 조회하는 기능을 작성해주세요.
+     * 특정 유저의 포인트 충전/이용 내역을 조회하는 기능입니다.
+     * 
+     * @param id 사용자 ID
+     * @return 사용자의 포인트 내역 리스트 (충전/사용 모두 포함)
      */
     @GetMapping("{id}/histories")
     public List<PointHistory> history(@PathVariable long id) {
-        return List.of();
+        log.info("포인트 내역 조회 요청: userId={}", id);
+        return pointService.getHistory(id);
     }
 
     /**

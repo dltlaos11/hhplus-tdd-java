@@ -5,6 +5,7 @@ import io.hhplus.tdd.database.PointHistoryTable;
 import io.hhplus.tdd.point.policy.ChargePolicy;
 import io.hhplus.tdd.point.policy.UsePolicy;
 import org.springframework.stereotype.Service;
+import java.util.List;
 
 /**
  * 포인트 관련 비즈니스 로직을 담당하는 서비스 클래스
@@ -81,6 +82,20 @@ public class PointService {
         pointHistoryTable.insert(userId, amount, TransactionType.CHARGE, System.currentTimeMillis());
         
         return updatedUserPoint;
+    }
+
+    /**
+     * 사용자의 포인트 사용/충전 내역을 조회합니다.
+     * 
+     * 처리 과정:
+     * 1. 사용자 ID로 모든 포인트 히스토리 조회
+     * 2. 충전/사용 내역을 시간순으로 반환
+     * 
+     * @param userId 사용자 ID
+     * @return 사용자의 포인트 내역 리스트 (충전/사용 모두 포함)
+     */
+    public List<PointHistory> getHistory(long userId) {
+        return pointHistoryTable.selectAllByUserId(userId);
     }
 
     /**

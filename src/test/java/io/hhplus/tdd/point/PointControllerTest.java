@@ -16,6 +16,7 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.willThrow;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.*;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+import java.util.List;
 
 /**
  * PointController 통합 테스트
@@ -126,6 +127,75 @@ class PointControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.id").value(userId))
                 .andExpect(jsonPath("$.point").value(0));
+    }
+
+    // =============== 새로운 내역 조회 API 테스트 ===============
+
+    @Test
+    @DisplayName("GET /point/{id}/histories 요청으로 포인트 내역을 조회할 수 있다")
+    void 포인트_내역_조회_API_성공_테스트() throws Exception {
+        // given
+        long userId = 1L;
+        List<PointHistory> histories = List.of(
+                new PointHistory(1L, userId, 1000L, TransactionType.CHARGE, System.currentTimeMillis()),
+                new PointHistory(2L, userId, 500L, TransactionType.USE, System.currentTimeMillis())
+        );
+        
+        given(pointService.getHistory(userId)).willReturn(histories);
+
+        // when & then
+        mockMvc.perform(get("/point/{id}/histories", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(2))
+                .andExpect(jsonPath("$[0].userId").value(userId))
+                .andExpect(jsonPath("$[0].amount").value(1000))
+                .andExpect(jsonPath("$[0].type").value("CHARGE"))
+                .andExpect(jsonPath("$[1].userId").value(userId))
+                .andExpect(jsonPath("$[1].amount").value(500))
+                .andExpect(jsonPath("$[1].type").value("USE"));
+    }
+
+    @Test
+    @DisplayName("포인트 내역이 없는 사용자의 경우 빈 배열을 반환한다")
+    void 포인트_내역_없는_사용자_API_테스트() throws Exception {
+        // given
+        long userId = 999L;
+        List<PointHistory> emptyHistories = List.of();
+        
+        given(pointService.getHistory(userId)).willReturn(emptyHistories);
+
+        // when & then
+        mockMvc.perform(get("/point/{id}/histories", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(0));
+    }
+
+    @Test
+    @DisplayName("충전과 사용이 섞인 내역을 조회할 수 있다")
+    void 혼합_내역_조회_API_테스트() throws Exception {
+        // given
+        long userId = 2L;
+        List<PointHistory> mixedHistories = List.of(
+                new PointHistory(1L, userId, 5000L, TransactionType.CHARGE, System.currentTimeMillis()),
+                new PointHistory(2L, userId, 2000L, TransactionType.USE, System.currentTimeMillis()),
+                new PointHistory(3L, userId, 3000L, TransactionType.CHARGE, System.currentTimeMillis())
+        );
+        
+        given(pointService.getHistory(userId)).willReturn(mixedHistories);
+
+        // when & then
+        mockMvc.perform(get("/point/{id}/histories", userId))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$").isArray())
+                .andExpect(jsonPath("$.length()").value(3))
+                .andExpect(jsonPath("$[0].type").value("CHARGE"))
+                .andExpect(jsonPath("$[0].amount").value(5000))
+                .andExpect(jsonPath("$[1].type").value("USE"))
+                .andExpect(jsonPath("$[1].amount").value(2000))
+                .andExpect(jsonPath("$[2].type").value("CHARGE"))
+                .andExpect(jsonPath("$[2].amount").value(3000));
     }
 
     @Test
