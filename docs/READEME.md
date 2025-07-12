@@ -222,3 +222,120 @@ public UserPoint charge(long userId, long amount) {
 - **기존 로직 유지**: 복잡한 비즈니스 로직 그대로 활용
 - **예외 처리 유지**: 기존 정책 검증과 예외 처리 그대로
 - **히스토리 일관성**: 포인트 변경
+
+#### 전체 동시성 보장 메커니즘
+
+```java
+// 계층별 동시성 처리
+┌─────────────────────────────────────┐
+│ 1. ConcurrentHashMap                │ ← 락 객체 저장소
+│    - computeIfAbsent() 원자적 연산  │
+└─────────────────────────────────────┘
+            ↓ 락 객체 제공
+┌─────────────────────────────────────┐
+│ 2. synchronized (lockObject)        │ ← 임계 영역 보호
+│    - 모니터 락으로 상호 배제        │
+└─────────────────────────────────────┘
+            ↓ 안전한 실행
+┌─────────────────────────────────────┐
+│ 3. 비즈니스 로직 원자적 실행        │ ← 데이터 무결성
+│    - 조회 → 검증 → 업데이트 → 기록 │
+└─────────────────────────────────────┘
+```
+
+## 1. 🏗️ DDD + Layered Architecture
+
+### **현재 구조 분석**
+
+```java
+// Layered Architecture
+┌─────────────────────────────────────┐
+│ Presentation Layer                  │
+│ ├── PointController.java            │ ✅ HTTP 요청/응답 처리
+│ ├── ApiControllerAdvice.java        │ ✅ 예외 처리
+│ └── ErrorResponse.java              │ ✅ 에러 DTO
+└─────────────────────────────────────┘
+            ↓ Service 호출
+┌─────────────────────────────────────┐
+│ Application Layer                   │
+│ └── PointService.java               │ ✅ 비즈니스 로직 조정
+└─────────────────────────────────────┘
+            ↓ Policy & Entity 사용
+┌─────────────────────────────────────┐
+│ Domain Layer                        │ <- DDD Domain Model
+│ ├── UserPoint.java                  │ ✅ 도메인 엔티티
+│ ├── PointHistory.java               │ ✅ 도메인 엔티티
+│ ├── TransactionType.java            │ ✅ 도메인 값 객체
+│ ├── ChargePolicy.java               │ ✅ 도메인 정책
+│ ├── UsePolicy.java                  │ ✅ 도메인 정책
+│ └── exception/ (도메인 예외들)       │ ✅ 도메인 예외
+└─────────────────────────────────────┘
+            ↓ Table 사용
+┌─────────────────────────────────────┐
+│ Infrastructure Layer                │
+│ ├── UserPointTable.java             │ ✅ 데이터 저장소
+│ └── PointHistoryTable.java          │ ✅ 데이터 저장소
+└─────────────────────────────────────┘
+```
+
+### **✅ Layered Architecture의 특징들**
+
+#### **1) 계층 간 의존성 방향 준수**
+
+```java
+// 상위 계층이 하위 계층을 의존
+PointController → PointService → UserPointTable
+// 하위 계층이 상위 계층을 의존하지 않음 ✅
+```
+
+#### **2) 각 계층의 책임 분리 명확**
+
+```java
+// Presentation: HTTP 관심사만
+@RestController
+public class PointController {
+    @GetMapping("{id}")
+    public UserPoint point(@PathVariable long id) { // 명확한 역할
+        return pointService.getPoint(id);
+    }
+}
+
+// Application: 비즈니스 플로우 조정
+@Service
+public class PointService {
+    public UserPoint charge(long userId, long amount) {
+        // 1. 조회 2. 검증 3. 업데이트 4. 기록 - 플로우 조정
+    }
+}
+
+// Domain: 비즈니스 규칙
+@Component
+public class ChargePolicy {
+    public void validate(long amount, long currentPoint) {
+        // 핵심 비즈니스 규칙만 담당
+    }
+}
+
+// Infrastructure: 데이터 접근
+@Component
+public class UserPointTable {
+    public UserPoint selectById(Long id) {
+        // 데이터 저장/조회만 담당
+    }
+}
+```
+
+#### **3) 도메인 중심 설계**
+
+```java
+// 도메인 엔티티가 핵심
+public record UserPoint(long id, long point, long updateMillis) {
+    public static UserPoint empty(long id) { ... } // 도메인 지식 포함
+}
+
+// 도메인 정책이 분리됨
+ChargePolicy, UsePolicy // 비즈니스 규칙 캡슐화
+
+// 도메인 예외 계층
+PointException → InvalidAmountException, InsufficientPointException...
+```

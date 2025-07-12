@@ -24,7 +24,17 @@ public class PointService {
     private final PointHistoryTable pointHistoryTable;
     private final ChargePolicy chargePolicy;
     private final UsePolicy usePolicy;
-    
+
+    /**
+     * ConcurrentHashMap의 동시성 보장 방식:
+     * Segment-based Locking: 내부적으로 여러 세그먼트로 나누어 부분 락킹
+     * Lock-free 읽기: 읽기 작업은 락 없이 수행
+     * 원자적 연산: computeIfAbsent() 메서드가 원자적으로 실행
+     * 
+     * HashMap으로 동시 접근시 무한루프 (링크드 리스트 순환 참조), 데이터 손실, NullPointerException 발생 가능
+     * ConcurrentHashMap 접근시 동시 접근 안전, 성능 최적화, 원자적 연산 보장
+     */
+
     // 사용자별 락 객체 관리 (ConcurrentHashMap으로 스레드 안전)
     private final ConcurrentHashMap<Long, Object> userLocks = new ConcurrentHashMap<>();
 
@@ -82,6 +92,12 @@ public class PointService {
      * - 다른 사용자: 병렬 처리 가능
      * - 모든 단계(조회→검증→업데이트→기록)가 원자적으로 실행
      * 
+     * synchronized의 동작 원리:
+     * 
+     * Monitor Lock: 각 객체는 내장 모니터 락을 가짐
+     * 상호 배제: 동일한 락 객체에 대해 한 번에 하나의 스레드만 진입 가능
+     * Memory Visibility: 락 해제 시 모든 변경사항이 다른 스레드에게 보임
+     * 
      * @param userId 사용자 ID
      * @param amount 충전할 금액
      * @return 충전 후 사용자 포인트 정보
@@ -90,7 +106,8 @@ public class PointService {
      */
     public UserPoint charge(long userId, long amount) {
         // 사용자별 락으로 동시성 제어 - 핵심 동시성 제어 구간
-        synchronized (getUserLock(userId)) {
+        synchronized (getUserLock(userId)) { // 모니터 락
+            // 임계 영역 (Critical Section)
             
             // 1. 현재 포인트 조회
             UserPoint currentUserPoint = userPointTable.selectById(userId);

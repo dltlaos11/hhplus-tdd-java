@@ -57,6 +57,22 @@ class ConcurrencyResolvedTest {
         // When: 10개 스레드가 동시에 100포인트씩 충전
         int threadCount = 10;
         long chargeAmount = 100L;
+        /*
+         *  ExecutorService & Executors
+         * 1. 스레드 생성/소멸 비용 절약
+         * 2. 동시 실행 스레드 수 제어
+         * 3. 리소스 관리 자동화
+         *
+         * CountDownLatch
+         * 1. 모든 비동기 작업 완료까지 대기
+         * 2. 타임아웃 설정으로 무한 대기 방지
+         * 3. 확실한 동기화 지점 제공
+         * 
+         * AtomicInteger
+         * 1. 락 없는 원자적 연산
+         * 2. 카운터 변수의 동시성 보장
+         * 3. 성능 최적화 (Lock-free)
+         */
         ExecutorService executorService = Executors.newFixedThreadPool(threadCount);
         CountDownLatch latch = new CountDownLatch(threadCount);
         
@@ -130,7 +146,7 @@ class ConcurrencyResolvedTest {
                     pointService.charge(userId, amount);
                     chargeCount.incrementAndGet();
                 } finally {
-                    latch.countDown();
+                    latch.countDown(); // 작업 완료 신호
                 }
             }, executorService);
         }
@@ -142,7 +158,7 @@ class ConcurrencyResolvedTest {
                     pointService.use(userId, amount);
                     useCount.incrementAndGet();
                 } finally {
-                    latch.countDown();
+                    latch.countDown(); // 작업 완료 신호
                 }
             }, executorService);
         }
@@ -262,6 +278,7 @@ class ConcurrencyResolvedTest {
         
         for (Long userId : userIds) {
             for (int j = 0; j < operationsPerUser; j++) {
+                // 스레드 내에서 사용
                 CompletableFuture.runAsync(() -> {
                     try {
                         pointService.charge(userId, amount);
@@ -329,9 +346,9 @@ class ConcurrencyResolvedTest {
             CompletableFuture.runAsync(() -> {
                 try {
                     pointService.use(userId, useAmount);
-                    successCount.incrementAndGet();
+                    successCount.incrementAndGet(); // 원자적 증가
                 } catch (Exception e) {
-                    failCount.incrementAndGet();
+                    failCount.incrementAndGet(); // 원자적 증가
                 } finally {
                     latch.countDown();
                 }
