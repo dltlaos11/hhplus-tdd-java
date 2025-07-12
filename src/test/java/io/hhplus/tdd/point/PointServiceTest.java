@@ -2,6 +2,7 @@ package io.hhplus.tdd.point;
 
 import io.hhplus.tdd.database.UserPointTable;
 import io.hhplus.tdd.database.PointHistoryTable;
+import io.hhplus.tdd.point.config.ConcurrencyConfig;
 import io.hhplus.tdd.point.policy.ChargePolicy;
 import io.hhplus.tdd.point.policy.UsePolicy;
 import io.hhplus.tdd.point.exception.InvalidAmountException;
@@ -26,16 +27,12 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import java.util.List;
 
 /**
- * PointService TDD 테스트
+ * PointService TDD 테스트 (ReentrantLock 적용 버전)
  * 
  * Mock 전략:
  * - Database 계층 (UserPointTable, PointHistoryTable): @Mock 사용 (런던파)
  * - 도메인 로직 (ChargePolicy, UsePolicy): @Spy 사용 (실제 동작 + 호출 검증)
- * 
- * @Spy 사용 이유:
- * - ChargePolicy, UsePolicy의 실제 비즈니스 로직 검증 필요
- * - 동시에 메서드 호출 여부도 검증하고 싶음
- * - 실제 정책 동작을 통한 통합적 테스트 가능
+ * - 설정 (ConcurrencyConfig): @Mock 사용 (테스트 환경 제어)
  */
 @ExtendWith(MockitoExtension.class)
 class PointServiceTest {
@@ -51,6 +48,9 @@ class PointServiceTest {
 
     @Spy
     private UsePolicy usePolicy;
+
+    @Mock
+    private ConcurrencyConfig concurrencyConfig; // 추가된 의존성
 
     @InjectMocks
     private PointService pointService;

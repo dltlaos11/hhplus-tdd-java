@@ -1,2 +1,14 @@
 spring:
   application.name: hhplus-tdd
+
+# 포인트 정책 설정
+point:
+  policy:
+    charge:
+      min-amount: 100 # 최소 충전 금액
+      max-total-point: 1000000 # 최대 보유 가능 포인트
+    use:
+      min-amount: 100 # 최소 사용 금액
+  concurrency:
+    max-locks: 10000 # 최대 보유 락 수
+    cleanup-interval: 3600000 # 락 정리 주기 (1시간, ms)

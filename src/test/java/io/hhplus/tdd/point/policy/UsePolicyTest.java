@@ -1,5 +1,6 @@
 package io.hhplus.tdd.point.policy;
 
+import io.hhplus.tdd.point.config.PointPolicyConfig;
 import io.hhplus.tdd.point.exception.InvalidAmountException;
 import io.hhplus.tdd.point.exception.InsufficientPointException;
 import org.junit.jupiter.api.BeforeEach;
@@ -10,21 +11,24 @@ import static org.assertj.core.api.Assertions.assertThatNoException;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 /**
- * 사용 정책 클래스 TDD 테스트
+ * 설정 기반 사용 정책 테스트
  * 
- * TDD 적용 이유:
- * 1. 사용 정책의 비즈니스 규칙을 테스트로 명세화
- * 2. 잔고 부족 등 핵심 예외 상황을 빠뜨리지 않고 검증
- * 3. ChargePolicy와 일관된 구조로 정책 클래스 설계
- * 4. 포인트 사용의 모든 edge case 사전 정의
+ * 개선사항:
+ * 1. 테스트에서도 실제 설정값 사용
+ * 2. ChargePolicy와 일관된 구조로 설정값 활용
  */
 class UsePolicyTest {
 
     private UsePolicy usePolicy;
+    private PointPolicyConfig.UseConfig useConfig;
 
     @BeforeEach
     void setUp() {
-        usePolicy = new UsePolicy();
+        // 테스트용 설정 (실제 설정값과 동일하게 설정)
+        PointPolicyConfig.ChargeConfig chargeConfig = new PointPolicyConfig.ChargeConfig(100L, 1_000_000L);
+        useConfig = new PointPolicyConfig.UseConfig(100L);
+        PointPolicyConfig config = new PointPolicyConfig(chargeConfig, useConfig);
+        usePolicy = new UsePolicy(config);
     }
 
     // =============== 성공 케이스 테스트 ===============
@@ -42,10 +46,10 @@ class UsePolicyTest {
     }
 
     @Test
-    @DisplayName("최소 사용 금액(100원)으로 사용 가능하다")
-    void 최소_사용_금액_성공() {
+    @DisplayName("설정된 최소 사용 금액으로 사용 가능하다")
+    void 설정_기반_최소_사용_금액_성공() {
         // given
-        long minAmount = 100L;
+        long minAmount = usePolicy.getMinUseAmount(); // 설정값 사용
         long currentPoint = 1000L;
 
         // when & then
@@ -94,16 +98,17 @@ class UsePolicyTest {
     }
 
     @Test
-    @DisplayName("최소 사용 금액(100원) 미만 사용 시 InvalidAmountException이 발생한다")
-    void 최소_금액_미만_사용_시_예외_발생() {
+    @DisplayName("설정된 최소 사용 금액 미만 사용 시 InvalidAmountException이 발생한다")
+    void 설정_기반_최소_금액_미만_사용_시_예외_발생() {
         // given
-        long tooSmallAmount = 99L;
+        long minAmount = usePolicy.getMinUseAmount();
+        long tooSmallAmount = minAmount - 1; // 설정값보다 1원 적게
         long currentPoint = 1000L;
 
         // when & then
         assertThatThrownBy(() -> usePolicy.validate(tooSmallAmount, currentPoint))
                 .isInstanceOf(InvalidAmountException.class)
-                .hasMessage("최소 사용 금액은 100원입니다");
+                .hasMessage("최소 사용 금액은 " + minAmount + "원입니다");
     }
 
     @Test
@@ -135,10 +140,11 @@ class UsePolicyTest {
     // =============== 경계값 테스트 ===============
 
     @Test
-    @DisplayName("최소 사용 금액 경계값 테스트 - 99원은 실패")
-    void 최소_사용_금액_경계값_실패() {
+    @DisplayName("설정 기반 최소 사용 금액 경계값 테스트 - 미만은 실패")
+    void 설정_기반_최소_사용_금액_경계값_실패() {
         // given
-        long boundaryAmount = 99L;
+        long minAmount = usePolicy.getMinUseAmount();
+        long boundaryAmount = minAmount - 1;
         long currentPoint = 1000L;
 
         // when & then
@@ -147,15 +153,15 @@ class UsePolicyTest {
     }
 
     @Test
-    @DisplayName("최소 사용 금액 경계값 테스트 - 100원은 성공")
-    void 최소_사용_금액_경계값_성공() {
+    @DisplayName("설정 기반 최소 사용 금액 경계값 테스트 - 경계값은 성공")
+    void 설정_기반_최소_사용_금액_경계값_성공() {
         // given
-        long boundaryAmount = 100L;
+        long minAmount = usePolicy.getMinUseAmount();
         long currentPoint = 1000L;
 
         // when & then
         assertThatNoException()
-                .isThrownBy(() -> usePolicy.validate(boundaryAmount, currentPoint));
+                .isThrownBy(() -> usePolicy.validate(minAmount, currentPoint));
     }
 
     @Test
