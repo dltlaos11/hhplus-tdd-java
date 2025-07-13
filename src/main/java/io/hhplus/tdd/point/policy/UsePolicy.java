@@ -1,11 +1,12 @@
 package io.hhplus.tdd.point.policy;
 
+import io.hhplus.tdd.point.config.PointPolicyConfig;
 import io.hhplus.tdd.point.exception.InvalidAmountException;
 import io.hhplus.tdd.point.exception.InsufficientPointException;
 import org.springframework.stereotype.Component;
 
 /**
- * 포인트 사용 정책 클래스
+ * 포인트 사용 정책 클래스 (설정 외부화 적용)
  * 
  * 설계 이유:
  * 1. 단일 책임 원칙 - 사용 관련 비즈니스 규칙만 담당
@@ -17,6 +18,10 @@ import org.springframework.stereotype.Component;
  * - @Component로 Spring 컨테이너가 관리하여 의존성 주입 가능
  * - ChargePolicy와 동일한 생명주기 관리
  * - 향후 다른 정책들과의 조합이나 설정값 주입 시 확장 용이
+ * 
+ *  개선사항:
+ * 1. 하드코딩된 상수를 Spring Property로 분리
+ * 2. ChargePolicy와 일관된 구조로 설정값 활용
  */
 @Component
 public class UsePolicy {
@@ -25,7 +30,11 @@ public class UsePolicy {
      * 비즈니스 상수들을 클래스 내부에 정의
      * 이유: 사용 정책과 관련된 값들을 한 곳에서 관리하여 응집도 증가
      */
-    private static final long MIN_USE_AMOUNT = 100L;  // 최소 사용 금액
+    private final PointPolicyConfig.UseConfig useConfig;
+
+    public UsePolicy(PointPolicyConfig pointPolicyConfig) {
+        this.useConfig = pointPolicyConfig.use();
+    }
 
     /**
      * 사용 금액과 현재 포인트를 검증합니다.
@@ -45,7 +54,7 @@ public class UsePolicy {
      * 
      * 검증 규칙:
      * 1. 양수여야 함 (0보다 커야 함)
-     * 2. 최소 사용 금액 이상이어야 함
+     * 2. 최소 사용 금액 이상이어야 함 (설정값 참조)
      * 
      * @param amount 사용 금액
      * @throws InvalidAmountException 유효하지 않은 금액인 경우
@@ -55,8 +64,8 @@ public class UsePolicy {
             throw new InvalidAmountException("사용 금액은 0보다 커야 합니다");
         }
         
-        if (amount < MIN_USE_AMOUNT) {
-            throw new InvalidAmountException("최소 사용 금액은 " + MIN_USE_AMOUNT + "원입니다");
+        if (amount < useConfig.minAmount()) {
+            throw new InvalidAmountException("최소 사용 금액은 " + useConfig.minAmount() + "원입니다");
         }
     }
 
@@ -74,5 +83,10 @@ public class UsePolicy {
         if (currentPoint < amount) {
             throw new InsufficientPointException(amount, currentPoint);
         }
+    }
+    
+    // 테스트를 위한 설정값 조회 메서드
+    public long getMinUseAmount() {
+        return useConfig.minAmount();
     }
 }
